@@ -1,0 +1,1 @@
+{\n  "name": "shieldnet-atm-simulator",\n  "version": "1.0.0",\n  "description": "Node.js project configuration for the SHIELDNET BANK ATM Simulator",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js",\n    "test": "echo 'Error: no test specified' && exit 1"\n  },\n  "author": "axosac0-netizen",\n  "license": "ISC"\n}
