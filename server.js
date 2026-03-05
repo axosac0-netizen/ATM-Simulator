@@ -1,72 +1,69 @@
+// ATM Simulator Server
+
 const express = require('express');
 const bodyParser = require('body-parser');
-const sqlite3 = require('sqlite3').verbose();
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 
 const app = express();
-const db = new sqlite3.Database(':memory:'); // Use an actual database file in production
 const PORT = process.env.PORT || 3000;
-const SECRET_KEY = 'your_secret_key'; // Use a better secret in production
 
-// Middleware
 app.use(bodyParser.json());
 
-// Initialize Database
-db.serialize(() => {
-    db.run(`CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, password TEXT)`);
-    db.run(`CREATE TABLE transactions (id INTEGER PRIMARY KEY, userId INTEGER, amount REAL, date TEXT, FOREIGN KEY(userId) REFERENCES users(id))`);
-});
-
-// Register User
-app.post('/register', async (req, res) => {
-    const { username, password } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
-    db.run('INSERT INTO users (username, password) VALUES (?, ?)', [username, hashedPassword], function(err) {
-        if (err) return res.status(500).send('Error registering user');
-        res.status(201).send({ id: this.lastID });
-    });
-});
-
-// Authenticate User
-app.post('/login', (req, res) => {
-    const { username, password } = req.body;
-    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
-        if (err || !user) return res.status(401).send('User not found');
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) return res.status(401).send('Invalid password');
-        const token = jwt.sign({ id: user.id }, SECRET_KEY);
-        res.json({ token });
-    });
-});
-
-// Middleware to authenticate JWT
-const authenticateJWT = (req, res, next) => {
-    const token = req.headers['authorization'];
-    if (!token) return res.sendStatus(403);
-    jwt.verify(token, SECRET_KEY, (err, user) => {
-        if (err) return res.sendStatus(403);
-        req.user = user;
-        next();
-    });
+// Sample data structure to hold account information
+let accounts = {
+    '1234-5678-9101-1121': { // Sample card number
+        pin: '1234',
+        balance: 5000,
+        transactionHistory: []
+    }
 };
 
-// Transaction Management
-app.post('/transaction', authenticateJWT, (req, res) => {
-    const { amount } = req.body;
-    const date = new Date().toISOString();
-    db.run('INSERT INTO transactions (userId, amount, date) VALUES (?, ?, ?)', [req.user.id, amount, date], function(err) {
-        if (err) return res.status(500).send('Error processing transaction');
-        res.status(201).send({ id: this.lastID });
-    });
+app.post('/insertCard', (req, res) => {
+    const { cardNumber } = req.body;
+    if (!accounts[cardNumber]) {
+        return res.status(400).json({ error: 'Card not recognized.' });
+    }
+    res.status(200).json({ message: 'Card inserted successfully.' });
 });
 
-// Get Transactions
-app.get('/transactions', authenticateJWT, (req, res) => {
-    db.all('SELECT * FROM transactions WHERE userId = ?', [req.user.id], (err, rows) => {
-        if (err) return res.status(500).send('Error fetching transactions');
-        res.json(rows);
-    });
+app.post('/authenticatePin', (req, res) => {
+    const { cardNumber, pin } = req.body;
+    const account = accounts[cardNumber];
+    if (!account || account.pin !== pin) {
+        return res.status(401).json({ error: 'Invalid PIN.' });
+    }
+    res.status(200).json({ message: 'PIN authenticated successfully.' });
+});
+
+app.get('/checkBalance', (req, res) => {
+    const { cardNumber } = req.body;
+    const account = accounts[cardNumber];
+    if (!account) {
+        return res.status(400).json({ error: 'Card not recognized.' });
+    }
+    res.status(200).json({ balance: account.balance });
+});
+
+app.post('/withdraw', (req, res) => {
+    const { cardNumber, amount } = req.body;
+    const account = accounts[cardNumber];
+    if (!account) {
+        return res.status(400).json({ error: 'Card not recognized.' });
+    }
+    if (amount > account.balance) {
+        return res.status(400).json({ error: 'Insufficient balance.' });
+    }
+    account.balance -= amount;
+    account.transactionHistory.push({ type: 'withdrawal', amount, date: new Date() });
+    res.status(200).json({ message: 'Withdrawal successful.', balance: account.balance });
+});
+
+app.get('/transactionHistory', (req, res) => {
+    const { cardNumber } = req.body;
+    const account = accounts[cardNumber];
+    if (!account) {
+        return res.status(400).json({ error: 'Card not recognized.' });
+    }
+    res.status(200).json({ transactionHistory: account.transactionHistory });
 });
 
 app.listen(PORT, () => {
